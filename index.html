@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal de Pesadas - Balanza</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen">
+
+  <script>
+    // Configuración de Supabase (usamos la ANON KEY)
+    const SUPABASE_URL = 'https://eqeotwlkwngibqjqbqor.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_d8sUtd7WoGXXglcMmyxfsw_VA-n-s-J';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  </script>
+
+  <!-- PANTALLA DE LOGIN -->
+  <div id="login-view" class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-xl shadow-lg max-w-md w-full border border-slate-200">
+      <h1 class="text-2xl font-bold text-slate-900 text-center mb-2">Portal de Clientes</h1>
+      <p class="text-sm text-slate-500 text-center mb-6">Iniciá sesión para consultar tus comprobantes</p>
+      
+      <form id="login-form" class="space-y-4" onsubmit="handleLogin(event)">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Email</label>
+          <input type="email" id="email" required placeholder="cliente1@ombu.com" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Contraseña</label>
+          <input type="password" id="password" required placeholder="••••••••" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition">Ingresar</button>
+      </form>
+      <div id="login-error" class="text-red-500 text-sm mt-3 text-center hidden"></div>
+    </div>
+  </div>
+
+  <!-- PANTALLA DASHBOARD (Oculta al inicio) -->
+  <div id="dashboard-view" class="hidden min-h-screen flex flex-col">
+    <nav class="bg-slate-900 text-white px-6 py-4 flex justify-between items-center shadow-md">
+      <div>
+        <h2 class="text-lg font-bold" id="user-company">Cargando...</h2>
+        <p class="text-xs text-slate-400" id="user-cuit"></p>
+      </div>
+      <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-3 py-2 rounded border border-slate-700">Cerrar Sesión</button>
+    </nav>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-xl font-bold text-slate-800">Historial de Comprobantes</h3>
+        <button onclick="loadPesadas()" class="text-sm bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded transition">Actualizar listado</button>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <table class="w-full text-left border-collapse">
+          <thead class="bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase text-slate-500">
+            <tr>
+              <th class="p-4">Ticket</th>
+              <th class="p-4">Fecha / Hora</th>
+              <th class="p-4">Chasis / Acoplado</th>
+              <th class="p-4">Chofer</th>
+              <th class="p-4">Producto</th>
+              <th class="p-4 text-right">Bruto (Kg)</th>
+              <th class="p-4 text-right">Tara (Kg)</th>
+              <th class="p-4 text-right">Neto (Kg)</th>
+            </tr>
+          </thead>
+          <tbody id="pesadas-table" class="divide-y divide-slate-100 text-sm">
+            <tr><td colspan="8" class="p-4 text-center text-slate-400">Cargando pesadas...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('login-error');
+      
+      errorDiv.classList.add('hidden');
+      const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        errorDiv.textContent = 'Credenciales inválidas: ' + error.message;
+        errorDiv.classList.remove('hidden');
+      } else {
+        initDashboard();
+      }
+    }
+
+    async function handleLogout() {
+      await _supabase.auth.signOut();
+      document.getElementById('dashboard-view').classList.add('hidden');
+      document.getElementById('login-view').classList.remove('hidden');
+    }
+
+    async function initDashboard() {
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('dashboard-view').classList.remove('hidden');
+
+      // 1. Obtener perfil del usuario
+      const { data: user } = await _supabase.auth.getUser();
+      const { data: perfiles } = await _supabase.from('perfiles').select('*').single();
+
+      if (perfiles) {
+        document.getElementById('user-company').textContent = perfiles.razon_social;
+        document.getElementById('user-cuit').textContent = 'CUIT: ' + perfiles.cuit;
+      }
+
+      // 2. Cargar las pesadas
+      loadPesadas();
+    }
+
+    async function loadPesadas() {
+      const tbody = document.getElementById('pesadas-table');
+      tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-slate-400">Cargando pesadas...</td></tr>';
+
+      // Consulta protegida por RLS: la DB filtra automáticamente por el CUIT del usuario logueado
+      const { data: pesadas, error } = await _supabase
+        .from('pesadas')
+        .select('*')
+        .order('numero_ticket', { ascending: false });
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-red-500">Error: ${error.message}</td></tr>`;
+        return;
+      }
+
+      if (!pesadas || pesadas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-slate-400">No se encontraron pesadas registradas para su CUIT.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = pesadas.map(p => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="p-4 font-semibold text-blue-600">#${p.numero_ticket}</td>
+          <td class="p-4">${new Date(p.fecha_hora).toLocaleString('es-AR')}</td>
+          <td class="p-4 font-mono">${p.patente_chasis} / ${p.patente_acoplado || '-'}</td>
+          <td class="p-4">${p.chofer || '-'}</td>
+          <td class="p-4">${p.producto || '-'}</td>
+          <td class="p-4 text-right font-mono">${p.peso_bruto.toLocaleString('es-AR')}</td>
+          <td class="p-4 text-right font-mono">${p.tara.toLocaleString('es-AR')}</td>
+          <td class="p-4 text-right font-mono font-bold text-slate-900">${p.peso_neto.toLocaleString('es-AR')}</td>
+        </tr>
+      `).replace(/\n/g, '');
+    }
+
+    // Comprobar si ya hay una sesión activa al cargar la página
+    _supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) initDashboard();
+    });
+  </script>
+</body>
+</html>
